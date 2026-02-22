@@ -1,0 +1,20 @@
+[profile.default]
+src = "src"
+offline = true  # avoids Foundry crash when system proxy config is problematic
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.24"
+evm_version = "paris" # CRITICAL for Rootstock compatibility
+optimizer = true
+optimizer_runs = 200
+
+# Map the npm-style imports to Foundry's lib/ folder
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@account-abstraction/=lib/account-abstraction/",
+    "account-abstraction/=lib/account-abstraction/"
+]
+
+[rpc_endpoints]
+rskMainnet = "https://public-node.rsk.co"
+rskTestnet = "https://public-node.testnet.rsk.co"
