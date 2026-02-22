@@ -8,13 +8,13 @@ It contains a `VerifyingPaymaster` specifically tuned for Rootstock, demonstrati
 
 ---
 
-## 🌟 Features
+## Features
 
-- **✅ Pure ERC-4337 implementation:** Uses standard `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` EntryPoint architecture.
-- **🪙 ERC-20 Gas Payments:** Includes `MockToken.sol` to simulate paying for gas with alternative tokens.
-- **✍️ Off-chain Verifying Paymaster:** A TypeScript service that signs UserOps off-chain, enabling custom business logic for gas sponsorship.
-- **⚡ Direct `handleOps` Execution:** Bypasses complex bundler setups for testing directly via an EOA against the Rootstock Testnet.
-- **🛠️ Foundry & Viem:** Built with modern, blazing-fast web3 tooling.
+- ** Pure ERC-4337 implementation:** Uses standard `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` EntryPoint architecture.
+- ** ERC-20 Gas Payments:** Includes `MockToken.sol` to simulate paying for gas with alternative tokens.
+- ** Off-chain Verifying Paymaster:** A TypeScript service that signs UserOps off-chain, enabling custom business logic for gas sponsorship.
+- ** Direct `handleOps` Execution:** Bypasses complex bundler setups for testing directly via an EOA against the Rootstock Testnet.
+- ** Foundry & Viem:** Built with modern, blazing-fast web3 tooling.
 
 ---
 
@@ -34,7 +34,7 @@ This kit uses **ERC-4337** to completely future-proof your Rootstock dApps.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Prerequisites
 
