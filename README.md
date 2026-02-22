@@ -1,3 +1,5 @@
+![Rootstock Banner](https://raw.githubusercontent.com/rsksmart/devportal/main/rootstock-logo.png)
+
 # Rootstock Paymaster Kit (ERC-4337)
 
 A complete, production-ready toolkit for implementing ERC-4337 Account Abstraction and gasless transactions on the **Rootstock (RSK)** network.
