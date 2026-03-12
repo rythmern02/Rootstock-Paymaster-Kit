@@ -2,25 +2,26 @@
 
 # Rootstock Paymaster Kit (ERC-4337)
 
-A production-ready toolkit for implementing ERC-4337 Account Abstraction and gasless transactions on the **Rootstock (RSK)** network. Users pay for gas with an ERC-20 token (e.g. rUSD) instead of RBTC.
+A complete, production-ready toolkit for implementing ERC-4337 Account Abstraction and gasless transactions on the **Rootstock (RSK)** network.
 
-> *IMPORTANT*
-> This kit targets **ERC-4337 v0.7** (`PackedUserOperation` / `BasePaymaster`). Ensure your EntryPoint deployment is also v0.7.
+Currently, developers wanting gasless transactions on Rootstock are often confused between the legacy RIF Relay system and the modern ERC-4337 standard. This project resolves that confusion by providing a pure, ERC-4337 implementation. 
 
----
-
-## Why ERC-4337 on Rootstock?
-
-| | RIF Relay (Legacy) | ERC-4337 (This Kit) |
-|---|---|---|
-| Target contract changes | Required (`IRelayRecipient`) | None |
-| Smart accounts | No | Yes |
-| Standard tooling (viem, permissionless) | Limited | Full |
-| Bundler ecosystem | Custom | Universal |
+It contains a `VerifyingPaymaster` specifically tuned for Rootstock, demonstrating how to sponsor gas for users in exchange for a custom ERC-20 token. This allows users to pay for gas in stablecoins (e.g., rUSD) or app tokens instead of RBTC.
 
 ---
 
 ## Features
+
+- **Pure ERC-4337 v0.7 Implementation:** Uses standard `0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0` EntryPoint architecture (`PackedUserOperation`, `BasePaymaster`, correct `_postOp` 4-param override).
+- **ERC-20 Gas Payments:** Includes `MockToken.sol` to simulate paying for gas with alternative tokens. Users pay gas in any ERC-20 token.
+- **Off-chain Verifying Paymaster:** A TypeScript service that signs UserOps off-chain, enabling custom business logic for gas sponsorship, configurable validity window, and per-sender nonce replay protection.
+- **Direct `handleOps` Execution:** Bypasses complex bundler setups for testing directly via an EOA against the Rootstock Testnet.
+- **Foundry & Viem:** Built with modern, blazing-fast web3 tooling.
+- **Production hardened:** Exchange-rate bounds, events, role separation (owner ≠ signer), timeout-guarded receipt waits.
+
+---
+
+## 🌟 Features
 
 - **Pure ERC-4337 v0.7 Implementation:** Uses standard `0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0` EntryPoint architecture (`PackedUserOperation`, `BasePaymaster`, correct `_postOp` 4-param override).
 - **ERC-20 Gas Payments:** Includes `MockToken.sol` to simulate paying for gas with alternative tokens. Users pay gas in any ERC-20 token.
@@ -44,14 +45,39 @@ The kit is currently live and tested on the Rootstock Testnet.
 
 ---
 
+## ✨ Audit Status
+
+All 26 critical, high, and medium severity bugs from the initial security audit have been successfully resolved, tested, and actively verified on the Rootstock Testnet. The kit is now in a production-ready state. See `bug-resolve.md` for full resolution details and test results.
+
+---
+
+## RIF Relay vs. ERC-4337
+
+When building on Rootstock, developers often encounter two models for gas abstraction:
+
+1. **RIF Relay (Legacy / Protocol Specific):** Rootstock's custom envelope relaying system. It requires specific smart contract alterations (`IRelayRecipient`), a relayer network, and relies heavily on custom EIP-712 signatures wrapping native transactions.
+2. **ERC-4337 (Modern Standard):** The Ethereum-wide standard for Account Abstraction. It uses a universal `EntryPoint` contract, standard `UserOperation` structs, and decentralized Bundlers. 
+
+**Why use ERC-4337?**
+- **No changes to target contracts:** You don't need to inherit `ERC2771Context` or `IRelayRecipient` in your dApps.
+- **Smart Accounts:** It allows users to have programmable accounts (multisig, social recovery, session keys) rather than just EOAs.
+- **Ecosystem Compatibility:** Tooling (like `viem`, `permissionless.js`, `pimlico`) works across all EVM chains.
+
+This kit uses **ERC-4337** to completely future-proof your Rootstock dApps.
+
+---
+
 ## Quick Start
 
-### Prerequisites
+### 1. Prerequisites
 
-- Node.js ≥ 18, [Foundry](https://getfoundry.sh/)
-- tRBTC from [Rootstock Faucet](https://faucet.rootstock.io/)
+- [Node.js](https://nodejs.org/) (v18+)
+- [Foundry](https://getfoundry.sh/)
+- A Rootstock Testnet wallet funded with tRBTC from the [Rootstock Faucet](https://faucet.rootstock.io/).
 
-### Installation
+### 2. Installation
+
+Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/your-username/rootstock-paymaster-kit.git
@@ -65,7 +91,9 @@ cd lib/forge-std            && git checkout v1.9.4  && cd ../..
 cd lib/account-abstraction  && git checkout v0.7.0  && cd ../..
 ```
 
-### Environment Setup
+### 3. Environment Setup
+
+Create a `.env` file based on the provided configurations:
 
 ```env
 # Network
@@ -73,11 +101,11 @@ RSK_TESTNET_RPC_URL="https://public-node.testnet.rsk.co"
 
 # Wallets  — use DIFFERENT keys for coordinator/owner and the signer!
 WALLET_PRIVATE_KEY="0x..."         # Deployer & bundler EOA (needs tRBTC)
-USER_PRIVATE_KEY="0x..."           # Smart Account owner EOA
+USER_PRIVATE_KEY="0x..."           # Smart Account owner EOA (needs 0 tRBTC)
 PAYMASTER_SIGNER_KEY="0x..."       # Backend key that signs sponsorships (MUST differ from owner)
 
 # Contract Addresses (populate after deployment)
-ENTRY_POINT_ADDRESS="0x..."        # ERC-4337 v0.7 EntryPoint on RSK
+ENTRY_POINT_ADDRESS="0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0" # ERC-4337 v0.7 EntryPoint on RSK
 FACTORY_ADDRESS="0x..."
 PAYMASTER_ADDRESS="0x..."          # Required — no fallback
 TOKEN_ADDRESS="0x..."              # Required — set after deploy
@@ -99,22 +127,75 @@ OP_PRE_VERIFY_GAS_NEW=100000
 HANDLE_OPS_GAS=2000000
 ```
 
-### Deployment
+### 4. Deployment
+
+Deploy the `SimpleAccountFactory` and the `VerifyingPaymaster` (which also deploys the `MockToken` if `TOKEN_ADDRESS` is absent):
 
 ```bash
-# Deploy paymaster (uses existing token if TOKEN_ADDRESS is set, else deploys MockToken)
+forge script script/DeploySimpleAccountFactory.s.sol --rpc-url $RSK_TESTNET_RPC_URL --broadcast
 forge script script/DeployPaymaster.s.sol --rpc-url $RSK_TESTNET_RPC_URL --broadcast
+```
+*Update your `.env` with the newly deployed addresses.*
 
-# Update .env with deployed addresses, then run setup
+### 5. Execution
+
+Run the one-time off-chain setup to pre-fund the paymaster, deploy your smart account, and mint the ERC-20 tokens:
+
+```bash
 npm run setup
+```
 
-# Execute a gasless UserOp
+Execute a gasless `UserOperation`. The Smart Account will transfer tokens to a dummy address, and the gas will be entirely sponsored by the Paymaster!
+
+```bash
 npm run execute:op
 ```
 
 ---
 
-## EntryPoint on Rootstock
+## 📊 It Works!
+
+Here is the exact output from a successful gasless execution on Rootstock Testnet using this kit:
+
+```text
+═══════════════════════════════════════════════════
+  ERC-4337 UserOp Execution on RSK Testnet
+═══════════════════════════════════════════════════
+
+⚠️  BENEFICIARY_ADDRESS not set — using coordinator address as beneficiary.
+   Set BENEFICIARY_ADDRESS in .env for production deployments.
+Smart Account:   0x14feb32FECBd2f61DDe3956754ebFdD569e238fe
+Owner EOA:       0x4E7fA7958e7F63508409E0045FE61D495d09D6FD
+Coordinator EOA: 0x18AF72239dD6a52426e4dd9509C6515Df06477E4
+Beneficiary:     0x18AF72239dD6a52426e4dd9509C6515Df06477E4
+
+--- Pre-flight Checks ---
+Account deployed: true
+Paymaster deposit: 0.0001 RBTC
+Account nonce:   0
+Current gas price: 7503136 wei
+
+Paymaster data attached (length): 260
+UserOp hash: 0x1f397e993f9d9545f6257d28cfef3fc3908beffe902085d0eb078228f6a19c33
+
+🚀 Submitting via direct handleOps...
+Tx hash: 0x346ab199e52dd3dcf77a6eb9d37f78600f1a525f35f0a68b6e9b37ba015a7bff
+Waiting for receipt...
+
+═══════════════════════════════════════════════════
+  Status: success
+  Block:  7439546n
+  Gas:    212748
+  Logs:   4
+═══════════════════════════════════════════════════
+
+✅ UserOp executed successfully!
+   View: https://explorer.testnet.rootstock.io/tx/0x346ab199e52dd3dcf77a6eb9d37f78600f1a525f35f0a68b6e9b37ba015a7bff
+```
+
+---
+
+## Rootstock EntryPoint (v0.7)
 
 > [!NOTE]
 > The canonical ERC-4337 v0.7 EntryPoint may not yet be officially deployed on Rootstock Testnet/Mainnet. In that case, deploy a fresh copy from the [eth-infinitism/account-abstraction](https://github.com/eth-infinitism/account-abstraction) repo at tag `v0.7.0`, then set `ENTRY_POINT_ADDRESS` accordingly.
@@ -123,22 +204,19 @@ npm run execute:op
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Scope
 
-```
-src/
-  core/VerifyingPaymaster.sol  — ERC-4337 paymaster with per-sender nonce replay protection
-  mock/MockToken.sol           — Owner-gated ERC-20 (testnet only)
-script/
-  DeployPaymaster.s.sol        — Deploy with TOKEN_ADDRESS support, enforces owner≠signer
-offchain/
-  paymasterService.ts          — Signs UserOps; reads paymasterNonce on-chain
-  executeUserOp.ts             — Builds and submits UserOps
-  setupPaymaster.ts            — One-time funding/approval setup
-test/
-  VeryfingPaymaster.t.sol      — Original validation tests
-  VerifyingPaymasterBugs.t.sol — Regression suite for all 26 bug fixes
-```
+This repository provides:
+1. **Solidity Contracts:**
+   - `core/VerifyingPaymaster.sol`: Inheriting from OpenZeppelin and `BasePaymaster` paradigms, adapted specifically for Rootstock's requirements with per-sender nonce replay protection.
+   - `mock/MockToken.sol`: An owner-gated ERC-20 contract allowing the user to pay gas fees in a token of their choice (testnet only).
+2. **The "Sponsor" Script:**
+   - Fully typed TypeScript services (`paymasterService.ts`, `executeUserOp.ts`, `setupPaymaster.ts`) utilizing `viem`.
+   - Constructs a valid v0.7 `PackedUserOperation`.
+   - Hashes it and signs it with the backend Verifier key to authorize gas sponsorship.
+3. **Bundler Integrations (Optional):**
+   - While the provided `executeUserOp.ts` acts as a direct EOA bundler (via `handleOps`) for easy testing, the generated `UserOperation` complies with `eth_sendUserOperation`. 
+   - Rootstock integration with bundlers like Pimlico/Stackup simply require pointing the RPC to their URL with Chain ID `31` (Testnet) or `30` (Mainnet).
 
 ---
 
