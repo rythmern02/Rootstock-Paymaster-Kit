@@ -21,18 +21,7 @@ It contains a `VerifyingPaymaster` specifically tuned for Rootstock, demonstrati
 
 ---
 
-## 🌟 Features
-
-- **Pure ERC-4337 v0.7 Implementation:** Uses standard `0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0` EntryPoint architecture (`PackedUserOperation`, `BasePaymaster`, correct `_postOp` 4-param override).
-- **ERC-20 Gas Payments:** Includes `MockToken.sol` to simulate paying for gas with alternative tokens. Users pay gas in any ERC-20 token.
-- **Off-chain Verifying Paymaster:** A TypeScript service that signs UserOps off-chain, enabling custom business logic for gas sponsorship, configurable validity window, and per-sender nonce replay protection.
-- **Direct `handleOps` Execution:** Bypasses complex bundler setups for testing directly via an EOA against the Rootstock Testnet.
-- **Foundry & Viem:** Built with modern, blazing-fast web3 tooling.
-- **Production hardened:** Exchange-rate bounds, events, role separation (owner ≠ signer), timeout-guarded receipt waits.
-
----
-
-## 🌍 Deployed Addresses (Rootstock Testnet)
+## Deployed Addresses (Rootstock Testnet)
 
 The kit is currently live and tested on the Rootstock Testnet.
 
@@ -42,13 +31,6 @@ The kit is currently live and tested on the Rootstock Testnet.
 | **SimpleAccountFactory** | `0x00e425c915915ba5b6b196b65e27850e0081b2ec` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x00e425c915915ba5b6b196b65e27850e0081b2ec) |
 | **MockToken (Gas Token)** | `0x3574f6a5ab7ce7edd3f8418f3f845f796acbf42b` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x3574f6a5ab7ce7edd3f8418f3f845f796acbf42b) |
 | **VerifyingPaymaster** | `0xcbd0fe917137cccdc99f3d2bcc6129652587ebb4` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0xcbd0fe917137cccdc99f3d2bcc6129652587ebb4) |
-
----
-
-## ✨ Audit Status
-
-All 26 critical, high, and medium severity bugs from the initial security audit have been successfully resolved, tested, and actively verified on the Rootstock Testnet. The kit is now in a production-ready state. See `bug-resolve.md` for full resolution details and test results.
-
 ---
 
 ## RIF Relay vs. ERC-4337
