@@ -315,19 +315,3 @@ cd lib/account-abstraction && git checkout v0.7.0 && cd ../..
 **Fix:** `DeployPaymaster.s.sol` checks for `TOKEN_ADDRESS` env var. If set, the existing token is used. If not set, `MockToken` is deployed with a clear warning that it is testnet-only.
 
 ---
-
-## Post-Fix Deployment Checklist
-
-Before going live on Rootstock Mainnet:
-
-- [ ] Set `PAYMASTER_OWNER` and `PAYMASTER_VERIFIER` to **different** hardware-wallet-controlled addresses
-- [ ] Set `TOKEN_ADDRESS` to your real ERC-20 token address (do **not** use MockToken)
-- [ ] Set `PAYMASTER_ADDRESS` explicitly — no fallback exists
-- [ ] Verify submodule versions with `git submodule status`
-- [ ] Run `forge test -vv` — all tests should pass
-- [ ] Run `npx tsc --noEmit` — zero TypeScript errors
-- [ ] Set `PAYMASTER_VALIDITY_SECONDS` appropriate for expected network conditions
-- [ ] Set a dedicated `BENEFICIARY_ADDRESS` (treasury or ops wallet)
-- [ ] Configure all gas limit env vars after measuring actual RSK gas costs
-- [ ] Review exchange rate bounds (`MIN_RATE`, `MAX_RATE`) for your token's price scale
-- [ ] Ensure the paymaster RBTC deposit covers expected volume before launch
