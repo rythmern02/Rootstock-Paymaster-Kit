@@ -90,7 +90,7 @@ contract VerifyingPaymasterTest is Test {
             signature
         );
 
-        (bytes memory context, uint256 validationData) = paymaster.testValidate(op, bytes32(0), 1000);
+        (, uint256 validationData) = paymaster.testValidate(op, bytes32(0), 1000);
 
         // Success = aggregator 0 (lower 160 bits). Full validationData packs validUntil/validAfter.
         assertTrue(validationData != SIG_VALIDATION_FAILED, "signature must not fail");

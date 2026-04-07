@@ -12,7 +12,7 @@ It contains a `VerifyingPaymaster` specifically tuned for Rootstock, demonstrati
 
 ## Features
 
-- **Pure ERC-4337 v0.7 Implementation:** Uses standard `0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0` EntryPoint architecture (`PackedUserOperation`, `BasePaymaster`, correct `_postOp` 4-param override).
+- **Pure ERC-4337 v0.7 Implementation:** Uses standard `0x3d05dea397e7778c5d453fc8f8ded3eacdb8d23e` EntryPoint architecture (`PackedUserOperation`, `BasePaymaster`, correct `_postOp` 4-param override).
 - **ERC-20 Gas Payments:** Includes `MockToken.sol` to simulate paying for gas with alternative tokens. Users pay gas in any ERC-20 token.
 - **Off-chain Verifying Paymaster:** A TypeScript service that signs UserOps off-chain, enabling custom business logic for gas sponsorship, configurable validity window, and per-sender nonce replay protection.
 - **Direct `handleOps` Execution:** Bypasses complex bundler setups for testing directly via an EOA against the Rootstock Testnet.
@@ -27,10 +27,10 @@ The kit is currently live and tested on the Rootstock Testnet.
 
 | Contract | Address | Block Explorer |
 |---|---|---|
-| **ERC-4337 EntryPoint (v0.7)** | `0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0) |
-| **SimpleAccountFactory** | `0x00e425c915915ba5b6b196b65e27850e0081b2ec` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x00e425c915915ba5b6b196b65e27850e0081b2ec) |
-| **MockToken (Gas Token)** | `0x3574f6a5ab7ce7edd3f8418f3f845f796acbf42b` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x3574f6a5ab7ce7edd3f8418f3f845f796acbf42b) |
-| **VerifyingPaymaster** | `0xcbd0fe917137cccdc99f3d2bcc6129652587ebb4` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0xcbd0fe917137cccdc99f3d2bcc6129652587ebb4) |
+| **ERC-4337 EntryPoint (v0.7)** | `0x3d05dea397e7778c5d453fc8f8ded3eacdb8d23e` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x3d05dea397e7778c5d453fc8f8ded3eacdb8d23e) |
+| **SimpleAccountFactory** | `0x0593a9ea617796dd44f347331ff2cf60d4117136` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x0593a9ea617796dd44f347331ff2cf60d4117136) |
+| **MockToken (Gas Token)** | `0x93cdc00c3759c9ed6427612f5fc9c943cb67755c` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x93cdc00c3759c9ed6427612f5fc9c943cb67755c) |
+| **VerifyingPaymaster** | `0x4d79fc691269e43bba513320faad2ca9eece0394` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x4d79fc691269e43bba513320faad2ca9eece0394) |
 ---
 
 ## RIF Relay vs. ERC-4337
@@ -87,7 +87,7 @@ USER_PRIVATE_KEY="0x..."           # Smart Account owner EOA (needs 0 tRBTC)
 PAYMASTER_SIGNER_KEY="0x..."       # Backend key that signs sponsorships (MUST differ from owner)
 
 # Contract Addresses (populate after deployment)
-ENTRY_POINT_ADDRESS="0x87fa7375e1caf5dc8b65e4094a84fdcd30cbdcd0" # ERC-4337 v0.7 EntryPoint on RSK
+ENTRY_POINT_ADDRESS="0x3d05dea397e7778c5d453fc8f8ded3eacdb8d23e" # ERC-4337 v0.7 EntryPoint on RSK
 FACTORY_ADDRESS="0x..."
 PAYMASTER_ADDRESS="0x..."          # Required — no fallback
 TOKEN_ADDRESS="0x..."              # Required — set after deploy

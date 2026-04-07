@@ -198,7 +198,7 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
         op = _signOp(op, validUntil, validAfter, signerKey);
 
         // First validation — succeeds, increments nonce.
-        (bytes memory context, uint256 vd) = paymaster.testValidate(
+        (, uint256 vd) = paymaster.testValidate(
             op,
             bytes32(0),
             1000
@@ -269,7 +269,7 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
     function test_Bug5_SetExchangeRateZeroReverts() public {
         vm.prank(owner);
         vm.expectRevert(bytes("PM: rate below minimum"));
-        paymaster.setExchangeRate(0);
+        paymaster.requestExchangeRateUpdate(0);
     }
 
     // ── Bug #7 — Rate bounds and event emission ───────────────────────────
@@ -282,7 +282,7 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
         uint256 belowMin = paymaster.MIN_RATE() - 1;
         vm.prank(owner);
         vm.expectRevert(bytes("PM: rate below minimum"));
-        paymaster.setExchangeRate(belowMin);
+        paymaster.requestExchangeRateUpdate(belowMin);
     }
 
     /**
@@ -293,7 +293,7 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
         uint256 aboveMax = paymaster.MAX_RATE() + 1;
         vm.prank(owner);
         vm.expectRevert(bytes("PM: rate above maximum"));
-        paymaster.setExchangeRate(aboveMax);
+        paymaster.requestExchangeRateUpdate(aboveMax);
     }
 
     /**
@@ -302,11 +302,19 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
     function test_Bug7_SetExchangeRateEmitsEvent() public {
         uint256 oldRate = paymaster.exchangeRate();
         uint256 newRate = 2 * 10 ** 6;
+        uint256 unlockTime = block.timestamp + paymaster.EXCHANGE_RATE_DELAY();
+
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit RootstockVerifyingPaymaster.ExchangeRateUpdateRequested(oldRate, newRate, unlockTime);
+        paymaster.requestExchangeRateUpdate(newRate);
+        
+        vm.warp(unlockTime);
 
         vm.prank(owner);
         vm.expectEmit(true, true, false, false);
         emit RootstockVerifyingPaymaster.ExchangeRateUpdated(oldRate, newRate);
-        paymaster.setExchangeRate(newRate);
+        paymaster.executeExchangeRateUpdate();
 
         assertEq(paymaster.exchangeRate(), newRate, "Bug7: rate must update");
     }
@@ -317,7 +325,7 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
     function test_Bug7_OnlyOwnerCanSetRate() public {
         vm.prank(user);
         vm.expectRevert();
-        paymaster.setExchangeRate(2 * 10 ** 6);
+        paymaster.requestExchangeRateUpdate(2 * 10 ** 6);
     }
 
     // ── Bug #14 — postOpReverted handling ────────────────────────────────
@@ -513,6 +521,24 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
             IEntryPoint(entryPointMock),
             signer, // owner == signer → must revert
             signer,
+            IERC20(address(token))
+        );
+    }
+
+    function test_Bug25_ConstructorZeroAddressReverts() public {
+        vm.expectRevert(bytes("PM: invalid owner"));
+        new PaymasterHarness(
+            IEntryPoint(entryPointMock),
+            address(0),
+            signer,
+            IERC20(address(token))
+        );
+
+        vm.expectRevert(bytes("PM: invalid signer"));
+        new PaymasterHarness(
+            IEntryPoint(entryPointMock),
+            owner,
+            address(0),
             IERC20(address(token))
         );
     }

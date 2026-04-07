@@ -32,8 +32,8 @@ const PAYMASTER_ADDRESS = process.env.PAYMASTER_ADDRESS as Hex;
 const USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY as Hex;
 const COORDINATOR_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY as Hex;
 
-// Bug #23: Beneficiary is configurable. Defaults to coordinator but warns.
-const BENEFICIARY_ADDRESS = process.env.BENEFICIARY_ADDRESS as Hex | undefined;
+// Bug #23: Beneficiary must be explicitly configured to prevent unintended payouts.
+const BENEFICIARY_ADDRESS = process.env.BENEFICIARY_ADDRESS as Hex;
 
 // Bug #20: Gas limit env overrides.
 const VERIFY_GAS_DEPLOYED = BigInt(process.env.OP_VERIFY_GAS_DEPLOYED ?? "200000");
@@ -184,14 +184,15 @@ async function main() {
   console.log("  ERC-4337 UserOp Execution on RSK Testnet");
   console.log("═══════════════════════════════════════════════════\n");
 
-  // Bug #23: Warn if using default coordinator as beneficiary.
-  const beneficiary: Hex = BENEFICIARY_ADDRESS ?? coordinatorAccount.address;
+  // Bug #23: Fail fast if BENEFICIARY_ADDRESS is not set.
   if (!BENEFICIARY_ADDRESS) {
-    console.warn(
-      "⚠️  BENEFICIARY_ADDRESS not set — using coordinator address as beneficiary.\n" +
-      "   Set BENEFICIARY_ADDRESS in .env for production deployments."
+    throw new Error(
+      "❌ BENEFICIARY_ADDRESS not set in .env\n" +
+      "   For production, this must be explicitly set to prevent unintended " +
+      "   payouts of accumulated fees to random addresses."
     );
   }
+  const beneficiary: Hex = BENEFICIARY_ADDRESS;
 
   // Step 1: Compute the Smart Account address.
   let smartAccountAddress: Hex;

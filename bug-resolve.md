@@ -109,9 +109,9 @@
 
 **Fix:**
 - Added `uint256 public constant MIN_RATE = 1e3`
-- Added `uint256 public constant MAX_RATE = 1e30`
+- Tightened upper bound via `uint256 public constant MAX_RATE = 1e21`
+- Added timelock for exchange rate updates (via `requestExchangeRateUpdate` and `executeExchangeRateUpdate` separated by `EXCHANGE_RATE_DELAY`) to give users time to exit if the rate is bumped.
 - Added `event ExchangeRateUpdated(uint256 indexed oldRate, uint256 indexed newRate)`
-- `setExchangeRate()` now enforces bounds and emits the event.
 
 ---
 
@@ -234,7 +234,7 @@ cd lib/account-abstraction && git checkout v0.7.0 && cd ../..
 
 **Root Cause:** `Number(validUntil)` converts `bigint` to `number`. While safe for `uint48` today (max ~281 trillion < 2^53), it is a dangerous pattern that breaks silently if types ever change.
 
-**Fix:** `validUntil` and `validAfter` are kept as `bigint` throughout and passed directly to `encodeAbiParameters` (viem accepts both).
+**Fix:** The `Number()` cast is intentionally kept because `viem` strictly requires a `number` for `uint48` parameter typings in `encodeAbiParameters`, but explicit comments were added to document that this cast is 100% safe (uint48 max value is less than Number.MAX_SAFE_INTEGER).
 
 ---
 
@@ -276,7 +276,7 @@ cd lib/account-abstraction && git checkout v0.7.0 && cd ../..
 
 **Root Cause:** Gas refunds from the EntryPoint always went to the coordinator address, with no way to direct refunds elsewhere (e.g., a treasury).
 
-**Fix:** Added `BENEFICIARY_ADDRESS` env var. If set, it's used as beneficiary. Falls back to `coordinatorAccount.address` with a console warning so operators are aware.
+**Fix:** Added `BENEFICIARY_ADDRESS` env var. The script now fails fast and explicitly requires this variable to be set for production safety (to prevent unintended payouts of accumulated fees).
 
 ---
 
@@ -315,3 +315,31 @@ cd lib/account-abstraction && git checkout v0.7.0 && cd ../..
 **Fix:** `DeployPaymaster.s.sol` checks for `TOKEN_ADDRESS` env var. If set, the existing token is used. If not set, `MockToken` is deployed with a clear warning that it is testnet-only.
 
 ---
+
+### Extra Note 1 — `transferFrom` vs `safeTransferFrom` inside `_postOp`
+**Severity:** 🟡 Medium  
+**File:** `src/core/VerifyingPaymaster.sol`
+
+**Root Cause:** Using raw `transferFrom` instead of `safeTransferFrom` inside the `postOpReverted` exception handler might seem dangerous for non-standard ERC-20s.
+
+**Fix:** A comment was added to explain that `try/catch` cannot effectively wrap `safeTransferFrom` (as it's an internal library call) without risking an uncatchable revert that would crash the entire `handleOps` transaction. The raw `transferFrom` is necessary to ensure `handleOps` succeeds even if token charging fails during revert mode.
+
+---
+
+### Extra Note 2 — Constructor Zero-Address Safety
+**Severity:** 🟢 Low  
+**File:** `src/core/VerifyingPaymaster.sol`
+
+**Root Cause:** The constructor could accidentally be deployed with `address(0)` for the owner or signer.
+
+**Fix:** Native zero-address checks (`require(_owner != address(0))`, `require(_verifyingSigner != address(0))`) are already present in the constructor, preventing this scenario from occurring.
+
+---
+
+### Extra Note 3 — Submodule Reproducibility
+**Severity:** 🟢 Low  
+**File:** `.gitmodules` / `README.md`
+
+**Root Cause:** Ensuring submodule clones pull the exact audited commits.
+
+**Fix:** Verified that the instructions in the `README.md` (`cd lib/xyz && git checkout vX.Y.Z`) correctly match exact tagged release commits in the openzeppelin and account-abstraction repos, ensuring 100% deterministic builds.

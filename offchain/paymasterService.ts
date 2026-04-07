@@ -162,9 +162,10 @@ function computeGetHash(
         gasFees as `0x${string}`,
         BigInt(chainId),
         paymasterAddr,
-        // Bug #19: validUntil/validAfter remain bigint throughout all arithmetic
-        // to prevent overflow. The Number() cast here is safe: uint48 max value
-        // (281,474,976,710,655) is well within Number.MAX_SAFE_INTEGER (2^53-1).
+        // Bug #19: viem's encodeAbiParameters type definitions strictly require
+        // 'number' for 'uint48' parameters. The Number() cast is intentional here
+        // to satisfy TS, and is completely safe because uint48 max value
+        // (281,474,976,710,655) is well within Number.MAX_SAFE_INTEGER.
         Number(validUntil),
         Number(validAfter),
       ]

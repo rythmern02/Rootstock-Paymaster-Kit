@@ -52,7 +52,11 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
      * @dev Upper bound prevents an operator from setting an astronomically high
      *      rate and overcharging users (Bug #7).
      */
-    uint256 public constant MAX_RATE = 1e30;
+    uint256 public constant MAX_RATE = 1e21; // Tightened cap
+
+    uint256 public pendingExchangeRate;
+    uint256 public exchangeRateUnlockTime;
+    uint256 public constant EXCHANGE_RATE_DELAY = 1 days;
 
     // ─── Events ──────────────────────────────────────────────────────────────
 
@@ -60,6 +64,13 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
         address indexed sender,
         uint256 actualGasCost,
         uint256 tokenAmountCharged
+    );
+
+    /// @notice Emitted when the owner requests an exchange rate update.
+    event ExchangeRateUpdateRequested(
+        uint256 oldRate,
+        uint256 newRate,
+        uint256 unlockTime
     );
 
     /// @notice Emitted whenever the owner updates the exchange rate (Bug #7).
@@ -73,7 +84,8 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
         address _verifyingSigner,
         IERC20 _token
     ) BasePaymaster(_entryPoint) {
-        // Bug #25: enforced upstream in the deploy script, but also sanity-check here.
+        require(_owner != address(0), "PM: invalid owner");
+        require(_verifyingSigner != address(0), "PM: invalid signer");
         require(_owner != _verifyingSigner, "PM: owner and signer must differ");
         _transferOwnership(_owner);
         verifyingSigner = _verifyingSigner;
@@ -206,9 +218,20 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
             // This handler MUST NOT revert — a revert here collapses handleOps.
             // We still attempt to collect gas costs from the user via try/catch.
             if (chargeAmount > 0) {
+                // We use raw `transferFrom` instead of `safeTransferFrom` here
+                // because we need to explicitly `try/catch` the external call.
+                // `safeTransferFrom` is an internal library call that reverts
+                // on stringless failures, which would bypass our catch and
+                // fail the entire `handleOps` transaction.
                 // solhint-disable-next-line no-empty-blocks
-                try token.transferFrom(sender, address(this), chargeAmount) {
-                    emit GasSponsored(sender, actualGasCost, chargeAmount);
+                try
+                    token.transferFrom(sender, address(this), chargeAmount)
+                returns (bool success) {
+                    if (success) {
+                        emit GasSponsored(sender, actualGasCost, chargeAmount);
+                    } else {
+                        emit GasSponsored(sender, actualGasCost, 0);
+                    }
                 } catch {
                     // User has insufficient tokens/allowance.
                     // Paymaster absorbs the loss for this operation.
@@ -229,17 +252,38 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
     // ─── Admin ───────────────────────────────────────────────────────────────
 
     /**
-     * @notice Update the token/gas exchange rate.
+     * @notice Request an update to the token/gas exchange rate.
      *
      * Bug #5 fix: Reverts if _newRate is zero (would make all ops free).
-     * Bug #7 fix: Enforces MIN_RATE and MAX_RATE bounds, emits ExchangeRateUpdated.
+     * Bug #7 fix: Enforces MIN_RATE and MAX_RATE bounds, initiates timelock.
      */
-    function setExchangeRate(uint256 _newRate) external onlyOwner {
+    function requestExchangeRateUpdate(uint256 _newRate) external onlyOwner {
         require(_newRate >= MIN_RATE, "PM: rate below minimum"); // Bug #5 + #7
         require(_newRate <= MAX_RATE, "PM: rate above maximum"); // Bug #7
+        pendingExchangeRate = _newRate;
+        exchangeRateUnlockTime = block.timestamp + EXCHANGE_RATE_DELAY;
+        emit ExchangeRateUpdateRequested(
+            exchangeRate,
+            _newRate,
+            exchangeRateUnlockTime
+        );
+    }
+
+    /**
+     * @notice Execute the pending exchange rate update after timelock expires.
+     */
+    function executeExchangeRateUpdate() external onlyOwner {
+        require(exchangeRateUnlockTime != 0, "PM: no pending update");
+        require(
+            block.timestamp >= exchangeRateUnlockTime,
+            "PM: timelock not expired"
+        );
+
         uint256 oldRate = exchangeRate;
-        exchangeRate = _newRate;
-        emit ExchangeRateUpdated(oldRate, _newRate); // Bug #7
+        exchangeRate = pendingExchangeRate;
+        exchangeRateUnlockTime = 0;
+
+        emit ExchangeRateUpdated(oldRate, exchangeRate); // Bug #7
     }
 
     /// @notice Update the verifying signer address.
