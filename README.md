@@ -31,6 +31,8 @@ The kit is currently live and tested on the Rootstock Testnet.
 | **SimpleAccountFactory** | `0x01735Dbf4c5521C3f4F1994e2287de101f35081A` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x01735Dbf4c5521C3f4F1994e2287de101f35081A) |
 | **MockToken (Gas Token)** | `0x9E34A69515Ef2C2C07074EC6573CEbA63a15F1f9` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x9E34A69515Ef2C2C07074EC6573CEbA63a15F1f9) |
 | **VerifyingPaymaster** | `0x6f944C5EDeb5629ca4972eEeb6aEf998bC11783A` | [View on Explorer](https://explorer.testnet.rootstock.io/address/0x6f944C5EDeb5629ca4972eEeb6aEf998bC11783A) |
+
+> ✅ **All contracts are fully verified on the Rootstock Testnet Explorer!**
 ---
 
 ## RIF Relay vs. ERC-4337
