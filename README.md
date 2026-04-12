@@ -146,9 +146,7 @@ Here is the exact output from a successful gasless execution on Rootstock Testne
   ERC-4337 UserOp Execution on RSK Testnet
 ═══════════════════════════════════════════════════
 
-⚠️  BENEFICIARY_ADDRESS not set — using coordinator address as beneficiary.
-   Set BENEFICIARY_ADDRESS in .env for production deployments.
-Smart Account:   0x14feb32FECBd2f61DDe3956754ebFdD569e238fe
+Smart Account:   0x5EEDc9aDc230c48b6EE10736b25cb4953022209f
 Owner EOA:       0x4E7fA7958e7F63508409E0045FE61D495d09D6FD
 Coordinator EOA: 0x18AF72239dD6a52426e4dd9509C6515Df06477E4
 Beneficiary:     0x18AF72239dD6a52426e4dd9509C6515Df06477E4
@@ -157,24 +155,26 @@ Beneficiary:     0x18AF72239dD6a52426e4dd9509C6515Df06477E4
 Account deployed: true
 Paymaster deposit: 0.0001 RBTC
 Account nonce:   0
-Current gas price: 7503136 wei
+
+UserOp target:    0x1111111111111111111111111111111111111111
+Current gas price: 26055176 wei
 
 Paymaster data attached (length): 260
-UserOp hash: 0x1f397e993f9d9545f6257d28cfef3fc3908beffe902085d0eb078228f6a19c33
+UserOp hash: 0x58d030c7398430955c9ac7cec0443d585798363ee7ebff33f17d5ff0d8e78be3
 
 🚀 Submitting via direct handleOps...
-Tx hash: 0x346ab199e52dd3dcf77a6eb9d37f78600f1a525f35f0a68b6e9b37ba015a7bff
+Tx hash: 0x538d8f277f79c9be19e5e768806c3d2769b8eaf2a8184e304284268c54cdd689
 Waiting for receipt...
 
 ═══════════════════════════════════════════════════
   Status: success
-  Block:  7439546n
-  Gas:    212748
+  Block:  7546176n
+  Gas:    189210
   Logs:   4
 ═══════════════════════════════════════════════════
 
 ✅ UserOp executed successfully!
-   View: https://explorer.testnet.rootstock.io/tx/0x346ab199e52dd3dcf77a6eb9d37f78600f1a525f35f0a68b6e9b37ba015a7bff
+   View: https://explorer.testnet.rootstock.io/tx/0x538d8f277f79c9be19e5e768806c3d2769b8eaf2a8184e304284268c54cdd689
 ```
 
 ---
