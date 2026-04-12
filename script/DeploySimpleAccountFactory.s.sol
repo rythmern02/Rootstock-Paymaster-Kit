@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.24;
 
 import "forge-std/Script.sol";
 import "@account-abstraction/contracts/samples/SimpleAccountFactory.sol";
@@ -12,7 +12,9 @@ contract DeploySimpleAccountFactory is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        SimpleAccountFactory factory = new SimpleAccountFactory(IEntryPoint(entryPoint));
+        SimpleAccountFactory factory = new SimpleAccountFactory(
+            IEntryPoint(entryPoint)
+        );
         console.log("SimpleAccountFactory deployed to:", address(factory));
         console.log("Set FACTORY_ADDRESS=%s in .env", address(factory));
 

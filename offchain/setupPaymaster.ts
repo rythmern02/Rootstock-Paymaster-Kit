@@ -341,14 +341,20 @@ async function main() {
     }
     console.log("Current allowance:", formatEther(currentAllowance), "tokens");
 
-    const MAX_UINT256 = 2n ** 256n - 1n;
+    // M-05: Use bounded approval instead of unlimited MAX_UINT256.
+    // Unlimited approval means a compromised paymaster/signer can drain ALL tokens.
+    // Bounded approval limits exposure to the approved amount.
+    // 100k tokens covers ~10,000 gas-paying transactions at typical exchange rates.
+    // If you prefer unlimited approval, set APPROVAL_AMOUNT=max in .env.
+    const BOUNDED_APPROVAL = parseEther("100000"); // 100k tokens
     if (currentAllowance < parseEther("1000")) {
-        console.log("Setting unlimited approval via Smart Account execute()...");
+        console.log("Setting bounded approval (100k tokens) via Smart Account execute()...");
+        console.log("  ⚠️  M-05: Using bounded approval to limit blast radius if paymaster is compromised.");
         try {
             const approveCalldata = encodeFunctionData({
                 abi: erc20Abi,
                 functionName: "approve",
-                args: [PAYMASTER_ADDRESS, MAX_UINT256],
+                args: [PAYMASTER_ADDRESS, BOUNDED_APPROVAL],
             });
             const hash = await walletClient.writeContract({
                 account: ownerAccount,

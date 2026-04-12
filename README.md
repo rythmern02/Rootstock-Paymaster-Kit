@@ -180,9 +180,12 @@ Waiting for receipt...
 ## Rootstock EntryPoint (v0.7)
 
 > [!NOTE]
-> The canonical ERC-4337 v0.7 EntryPoint may not yet be officially deployed on Rootstock Testnet/Mainnet. In that case, deploy a fresh copy from the [eth-infinitism/account-abstraction](https://github.com/eth-infinitism/account-abstraction) repo at tag `v0.7.0`, then set `ENTRY_POINT_ADDRESS` accordingly.
+> This kit is fully integrated with the **Canonical ERC-4337 v0.7 EntryPoint** at its official unified deterministic address:
+> `0x0000000071727De22E5E9d8BAf0edAc6f37da032`
 >
 > The canonical v0.6 EntryPoint (`0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789`) is **incompatible** with this kit's v0.7 contracts.
+>
+> Using the Canonical v0.7 EntryPoint ensures maximum compatibility across all major bundler providers (e.g., Alchemy, Pimlico, Biconomy) and Smart Account frameworks.
 
 ---
 
@@ -205,9 +208,10 @@ This repository provides:
 ## 🧪 Tests
 
 ```bash
-forge test -vv                                          # All tests
+npm test                                                 # Full test suite (Forge + TS typecheck)
+forge test -vv                                           # All Solidity tests
 forge test --match-path test/VerifyingPaymasterBugs.t.sol -vvv   # Bug regression suite
-npx tsc --noEmit                                        # TypeScript type check
+npx tsc --noEmit                                         # TypeScript type check
 ```
 
 ---
@@ -215,11 +219,27 @@ npx tsc --noEmit                                        # TypeScript type check
 ## 🔒 Security Notes
 
 - **Owner ≠ Verifier** — The deploy script enforces different keys. A compromise of the signing key allows forged sponsorships; a compromise of the owner key allows fund withdrawal. Separating them limits blast radius.
-- **Exchange rate bounds** — `MIN_RATE` / `MAX_RATE` prevent accidental free-sponsorship or extreme overcharging.
-- **Token approval model** — The paymaster charges tokens in `_postOp` (not validation), complying with ERC-4337 bundler opcode restrictions. Users must approve the paymaster before submitting UserOps.
+- **Exchange rate bounds** — `MIN_RATE` / `MAX_RATE` prevent accidental free-sponsorship or extreme overcharging. Rate changes require a 1-day timelock and can be cancelled via `cancelExchangeRateUpdate()`.
+- **Token approval model** — The paymaster charges tokens in `_postOp` (not validation), complying with ERC-4337 bundler opcode restrictions. Users must approve the paymaster before submitting UserOps. Setup uses bounded approval (100k tokens) to limit blast radius.
 - **Replay protection** — `paymasterNonces[sender]` is incremented on every validated op, preventing within-window signature reuse.
+- **Beneficiary address** — The `BENEFICIARY_ADDRESS` env var must be explicitly set and cannot be the zero address, preventing accidental burning of gas refunds.
+
+### Bundler Staking (M-03)
+
+> [!IMPORTANT]
+> ERC-4337 requires paymasters that access associated storage (e.g., ERC-20 balances in `_postOp`) to maintain a stake with the EntryPoint. **Strict bundlers** (Pimlico, Alchemy, Stackup) enforce this and will reject UserOps from unstaked paymasters.
+>
+> The paymaster contract includes `addStake()`, `unlockStake()`, and `withdrawStake()` admin functions for this purpose:
+>
+> ```solidity
+> // Stake 0.01 RBTC with a 1-day unlock delay
+> paymaster.addStake{value: 0.01 ether}(86400);
+> ```
+>
+> If you are using direct `handleOps` submission (as demonstrated in this project) or a permissive bundler, staking is not required but is still recommended for production deployments.
 
 ---
 
 ## 📄 License
 MIT
+

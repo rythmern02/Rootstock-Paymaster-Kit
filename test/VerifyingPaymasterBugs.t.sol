@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.24;
 
 import "forge-std/Test.sol";
 import "../src/core/VerifyingPaymaster.sol";
@@ -198,11 +198,7 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
         op = _signOp(op, validUntil, validAfter, signerKey);
 
         // First validation — succeeds, increments nonce.
-        (, uint256 vd) = paymaster.testValidate(
-            op,
-            bytes32(0),
-            1000
-        );
+        (, uint256 vd) = paymaster.testValidate(op, bytes32(0), 1000);
         assertEq(uint160(vd), 0, "Bug4: first validation should succeed");
         assertEq(
             paymaster.paymasterNonces(user),
@@ -306,9 +302,13 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
 
         vm.prank(owner);
         vm.expectEmit(true, false, false, true);
-        emit RootstockVerifyingPaymaster.ExchangeRateUpdateRequested(oldRate, newRate, unlockTime);
+        emit RootstockVerifyingPaymaster.ExchangeRateUpdateRequested(
+            oldRate,
+            newRate,
+            unlockTime
+        );
         paymaster.requestExchangeRateUpdate(newRate);
-        
+
         vm.warp(unlockTime);
 
         vm.prank(owner);
@@ -552,6 +552,199 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
         paymaster.setVerifyingSigner(owner);
     }
 
+    // ── M-01 — Constructor rejects zero-address token ─────────────────────
+
+    /**
+     * @notice M-01: Constructor must revert when _token is address(0).
+     *         Deploying with IERC20(address(0)) would create a paymaster that
+     *         cannot collect payments, draining RBTC deposit for free gas.
+     */
+    function test_M01_ConstructorZeroTokenReverts() public {
+        vm.expectRevert(bytes("PM: invalid token"));
+        new PaymasterHarness(
+            IEntryPoint(entryPointMock),
+            owner,
+            signer,
+            IERC20(address(0))
+        );
+    }
+
+    // ── M-04 — cancelExchangeRateUpdate ───────────────────────────────────
+
+    /**
+     * @notice M-04: cancelExchangeRateUpdate clears pending state.
+     */
+    function test_M04_CancelExchangeRateUpdate() public {
+        uint256 newRate = 2 * 10 ** 6;
+
+        vm.prank(owner);
+        paymaster.requestExchangeRateUpdate(newRate);
+        assertTrue(
+            paymaster.exchangeRateUnlockTime() > 0,
+            "M04: should have pending update"
+        );
+
+        vm.prank(owner);
+        paymaster.cancelExchangeRateUpdate();
+
+        assertEq(
+            paymaster.pendingExchangeRate(),
+            0,
+            "M04: pendingRate must be 0"
+        );
+        assertEq(
+            paymaster.exchangeRateUnlockTime(),
+            0,
+            "M04: unlockTime must be 0"
+        );
+    }
+
+    /**
+     * @notice M-04: cancelExchangeRateUpdate reverts if no pending update.
+     */
+    function test_M04_CancelNoPendingReverts() public {
+        vm.prank(owner);
+        vm.expectRevert(bytes("PM: no pending update"));
+        paymaster.cancelExchangeRateUpdate();
+    }
+
+    // ── M-06 — withdrawToken and setVerifyingSigner success tests ─────────
+
+    /**
+     * @notice M-06: withdrawToken successfully transfers tokens to recipient.
+     */
+    function test_M06_WithdrawTokenSuccess() public {
+        // Transfer some tokens to the paymaster first.
+        uint256 amount = 500 * 1e18;
+        token.mint(address(paymaster), amount);
+
+        address recipient = makeAddr("recipient");
+        uint256 balBefore = token.balanceOf(recipient);
+
+        vm.prank(owner);
+        paymaster.withdrawToken(recipient, amount);
+
+        assertEq(
+            token.balanceOf(recipient) - balBefore,
+            amount,
+            "M06: recipient must receive withdrawn tokens"
+        );
+        assertEq(
+            token.balanceOf(address(paymaster)),
+            0,
+            "M06: paymaster balance must be zero after withdrawal"
+        );
+    }
+
+    /**
+     * @notice M-06: withdrawToken reverts when `to` is the zero address (L-03 fix).
+     */
+    function test_M06_WithdrawTokenZeroAddressReverts() public {
+        token.mint(address(paymaster), 100 * 1e18);
+        vm.prank(owner);
+        vm.expectRevert(bytes("PM: zero address"));
+        paymaster.withdrawToken(address(0), 100 * 1e18);
+    }
+
+    /**
+     * @notice M-06: setVerifyingSigner successfully updates the signer and
+     *         old signatures become invalid.
+     */
+    function test_M06_SetVerifyingSignerSuccess() public {
+        (address newSigner, ) = makeAddrAndKey("newSigner");
+
+        vm.prank(owner);
+        paymaster.setVerifyingSigner(newSigner);
+
+        assertEq(
+            paymaster.verifyingSigner(),
+            newSigner,
+            "M06: verifyingSigner must be updated"
+        );
+    }
+
+    // ── M-07 — PostOpMode.opReverted tested ─────────────────────────────────
+
+    /**
+     * @notice M-07: In ERC-4337 v0.7, PostOpMode has three values:
+     *         opSucceeded, opReverted, postOpReverted.
+     *         The opReverted mode (called when the account's executeUserOp reverts)
+     *         follows the same charging path as opSucceeded (the `else` branch).
+     *         This test ensures that code path charges tokens correctly.
+     */
+    function test_M07_PostOpOpRevertedChargesCorrectly() public {
+        uint256 rate = paymaster.exchangeRate();
+        uint256 actualGasCost = 150_000;
+        uint256 maxTokenCost = 10_000 * 1e18;
+        bytes memory context = abi.encode(user, maxTokenCost, rate);
+
+        uint256 balBefore = token.balanceOf(user);
+        paymaster.testPostOp(
+            IPaymaster.PostOpMode.opReverted,
+            context,
+            actualGasCost,
+            1e9
+        );
+        uint256 balAfter = token.balanceOf(user);
+
+        uint256 expectedCharge = (actualGasCost * rate) /
+            paymaster.PRICE_DENOMINATOR();
+        assertEq(
+            balBefore - balAfter,
+            expectedCharge,
+            "M07: opReverted must charge same as opSucceeded"
+        );
+    }
+
+    // ── L-04 — DEFAULT_EXCHANGE_RATE constant ─────────────────────────────
+
+    /**
+     * @notice L-04: Verify the named constant matches the constructor value.
+     */
+    function test_L04_DefaultExchangeRateConstant() public view {
+        assertEq(
+            paymaster.exchangeRate(),
+            paymaster.DEFAULT_EXCHANGE_RATE(),
+            "L04: initial rate must equal DEFAULT_EXCHANGE_RATE"
+        );
+        assertEq(
+            paymaster.DEFAULT_EXCHANGE_RATE(),
+            1e6,
+            "L04: DEFAULT_EXCHANGE_RATE must be 1e6"
+        );
+    }
+
+    // ── L-06 — pendingExchangeRate reset after execution ──────────────────
+
+    /**
+     * @notice L-06: After executeExchangeRateUpdate, both pendingExchangeRate
+     *         and exchangeRateUnlockTime must be cleared to zero.
+     */
+    function test_L06_PendingRateResetAfterExecution() public {
+        uint256 newRate = 5 * 10 ** 6;
+
+        vm.prank(owner);
+        paymaster.requestExchangeRateUpdate(newRate);
+
+        // Fast-forward past timelock.
+        vm.warp(block.timestamp + paymaster.EXCHANGE_RATE_DELAY());
+
+        vm.prank(owner);
+        paymaster.executeExchangeRateUpdate();
+
+        assertEq(paymaster.exchangeRate(), newRate, "L06: rate must update");
+        assertEq(
+            paymaster.pendingExchangeRate(),
+            0,
+            "L06: pendingRate must be reset to 0"
+        );
+        assertEq(
+            paymaster.exchangeRateUnlockTime(),
+            0,
+            "L06: unlockTime must be reset to 0"
+        );
+    }
+
     // ── Existing regression — valid signature still passes ────────────────
 
     /**
@@ -612,6 +805,68 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
             validationData,
             SIG_VALIDATION_FAILED,
             "regression: wrong sig must fail"
+        );
+    }
+
+    // ── Merged from VeryfingPaymaster.t.sol (L-01) ────────────────────────
+
+    /**
+     * @notice L-01: Merged from the typo-named test file. Validates that a
+     *         correctly signed UserOp with explicit validAfter passes validation.
+     */
+    function test_ValidSignature_MergedFromOldFile() public {
+        PackedUserOperation memory op;
+        op.sender = user;
+        op.nonce = 0;
+        op.initCode = "";
+        op.callData = "";
+        op.accountGasLimits = bytes32((uint256(100000) << 128) | 100000);
+        op.preVerificationGas = 50000;
+        op.gasFees = bytes32((uint256(1e9) << 128) | 1e9);
+
+        uint48 validUntil = uint48(block.timestamp + 300);
+        uint48 validAfter = uint48(block.timestamp);
+        uint128 verificationGasLimit = 100000;
+        uint128 postOpGasLimit = 100000;
+        bytes memory placeholderSig = new bytes(65);
+        op.paymasterAndData = abi.encodePacked(
+            address(paymaster),
+            verificationGasLimit,
+            postOpGasLimit,
+            validUntil,
+            validAfter,
+            placeholderSig
+        );
+
+        bytes32 hash = paymaster.getHash(op, validUntil, validAfter);
+        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(hash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, ethSignedHash);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        op.paymasterAndData = abi.encodePacked(
+            address(paymaster),
+            verificationGasLimit,
+            postOpGasLimit,
+            validUntil,
+            validAfter,
+            signature
+        );
+
+        (, uint256 validationData) = paymaster.testValidate(
+            op,
+            bytes32(0),
+            1000
+        );
+
+        // Success = aggregator 0 (lower 160 bits). Full validationData packs validUntil/validAfter.
+        assertTrue(
+            validationData != SIG_VALIDATION_FAILED,
+            "signature must not fail"
+        );
+        assertEq(
+            uint160(validationData),
+            0,
+            "aggregator must be 0 for success"
         );
     }
 }

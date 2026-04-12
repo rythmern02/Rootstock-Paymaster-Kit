@@ -6,7 +6,6 @@ import {
   http,
   parseEther,
   encodeFunctionData,
-  encodePacked,
   concat,
   pad,
   toHex,
@@ -33,7 +32,15 @@ const USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY as Hex;
 const COORDINATOR_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY as Hex;
 
 // Bug #23: Beneficiary must be explicitly configured to prevent unintended payouts.
+// M-02: Zero-address string is truthy in JS — must be explicitly checked.
 const BENEFICIARY_ADDRESS = process.env.BENEFICIARY_ADDRESS as Hex;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+// M-08: Configurable demo UserOp values (destination, value, calldata).
+// WARNING: The default destination is a burn address — change for real transactions!
+const USEROP_DESTINATION = (process.env.USEROP_DESTINATION ?? "0x1111111111111111111111111111111111111111") as Hex;
+const USEROP_VALUE = parseEther(process.env.USEROP_VALUE ?? "0.0000001");
+const USEROP_CALLDATA = (process.env.USEROP_CALLDATA ?? "0x1234") as Hex;
 
 // Bug #20: Gas limit env overrides.
 const VERIFY_GAS_DEPLOYED = BigInt(process.env.OP_VERIFY_GAS_DEPLOYED ?? "200000");
@@ -184,10 +191,12 @@ async function main() {
   console.log("  ERC-4337 UserOp Execution on RSK Testnet");
   console.log("═══════════════════════════════════════════════════\n");
 
-  // Bug #23: Fail fast if BENEFICIARY_ADDRESS is not set.
-  if (!BENEFICIARY_ADDRESS) {
+  // Bug #23 + M-02: Fail fast if BENEFICIARY_ADDRESS is not set or is zero address.
+  // A zero-address string like "0x000...000" is truthy in JS, so we must check explicitly.
+  if (!BENEFICIARY_ADDRESS || BENEFICIARY_ADDRESS === ZERO_ADDRESS) {
     throw new Error(
-      "❌ BENEFICIARY_ADDRESS not set in .env\n" +
+      "❌ BENEFICIARY_ADDRESS not set or is zero address in .env\n" +
+      "   Gas refunds sent to address(0) are burned permanently.\n" +
       "   For production, this must be explicitly set to prevent unintended " +
       "   payouts of accumulated fees to random addresses."
     );
@@ -274,15 +283,17 @@ async function main() {
   }
 
   // Step 4: Build callData.
+  // M-08: Use configurable demo values instead of hardcoded addresses.
+  console.log("\nUserOp target:   ", USEROP_DESTINATION);
   let executeCallData: Hex;
   try {
     executeCallData = encodeFunctionData({
       abi: simpleAccountAbi,
       functionName: "execute",
       args: [
-        "0x1111111111111111111111111111111111111111",
-        parseEther("0.0000001"),
-        "0x1234" as Hex,
+        USEROP_DESTINATION,
+        USEROP_VALUE,
+        USEROP_CALLDATA,
       ],
     });
   } catch (e: any) {

@@ -1,7 +1,7 @@
 {
   "name": "rsk-erc4337",
   "version": "1.0.0",
-  "description": "**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**",
+  "description": "A production-ready ERC-4337 Account Abstraction and gasless transaction toolkit for the Rootstock (RSK) network, featuring a VerifyingPaymaster that lets users pay gas in ERC-20 tokens.",
   "main": "index.js",
   "directories": {
     "lib": "lib",
@@ -10,7 +10,10 @@
   "scripts": {
     "setup": "tsx offchain/setupPaymaster.ts",
     "execute:op": "tsx offchain/executeUserOp.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "forge:test": "forge test -vv",
+    "forge:build": "forge build",
+    "typecheck": "tsc --noEmit",
+    "test": "forge test -vv && tsc --noEmit"
   },
   "keywords": [],
   "author": "",

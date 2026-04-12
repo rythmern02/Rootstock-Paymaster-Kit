@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity 0.8.24;
 
 import "@account-abstraction/contracts/core/BasePaymaster.sol";
 import "@account-abstraction/contracts/core/UserOperationLib.sol";
@@ -54,6 +54,13 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
      */
     uint256 public constant MAX_RATE = 1e21; // Tightened cap
 
+    /**
+     * @dev Default exchange rate: 1e6 / 1e18 = 1e-12 tokens per gas unit.
+     *      At 18-decimal tokens, this means 1M gas costs 0.000001 tokens.
+     *      L-04: Extracted from constructor magic number for clarity.
+     */
+    uint256 public constant DEFAULT_EXCHANGE_RATE = 1e6;
+
     uint256 public pendingExchangeRate;
     uint256 public exchangeRateUnlockTime;
     uint256 public constant EXCHANGE_RATE_DELAY = 1 days;
@@ -76,6 +83,9 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
     /// @notice Emitted whenever the owner updates the exchange rate (Bug #7).
     event ExchangeRateUpdated(uint256 indexed oldRate, uint256 indexed newRate);
 
+    /// @notice Emitted when the owner cancels a pending exchange rate update (M-04).
+    event ExchangeRateUpdateCancelled();
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     constructor(
@@ -86,11 +96,12 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
     ) BasePaymaster(_entryPoint) {
         require(_owner != address(0), "PM: invalid owner");
         require(_verifyingSigner != address(0), "PM: invalid signer");
+        require(address(_token) != address(0), "PM: invalid token"); // M-01
         require(_owner != _verifyingSigner, "PM: owner and signer must differ");
         _transferOwnership(_owner);
         verifyingSigner = _verifyingSigner;
         token = _token;
-        exchangeRate = 1 * 10 ** 6;
+        exchangeRate = DEFAULT_EXCHANGE_RATE; // L-04: named constant
     }
 
     // ─── Hash ────────────────────────────────────────────────────────────────
@@ -110,6 +121,11 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
      *   [52:58]  validUntil           (uint48,  big-endian)
      *   [58:64]  validAfter           (uint48,  big-endian)
      *   [64:129] signature            (65 bytes)
+     *
+     * @param userOp       The packed user operation.
+     * @param validUntil   Timestamp after which the signature expires.
+     * @param validAfter   Timestamp before which the signature is not valid.
+     * @return             The keccak256 hash to be signed by the verifying signer.
      */
     function getHash(
         PackedUserOperation calldata userOp,
@@ -256,6 +272,8 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
      *
      * Bug #5 fix: Reverts if _newRate is zero (would make all ops free).
      * Bug #7 fix: Enforces MIN_RATE and MAX_RATE bounds, initiates timelock.
+     *
+     * @param _newRate The proposed new exchange rate (must be within [MIN_RATE, MAX_RATE]).
      */
     function requestExchangeRateUpdate(uint256 _newRate) external onlyOwner {
         require(_newRate >= MIN_RATE, "PM: rate below minimum"); // Bug #5 + #7
@@ -281,20 +299,55 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
 
         uint256 oldRate = exchangeRate;
         exchangeRate = pendingExchangeRate;
+        pendingExchangeRate = 0; // L-06: clear stale state
         exchangeRateUnlockTime = 0;
 
         emit ExchangeRateUpdated(oldRate, exchangeRate); // Bug #7
     }
 
-    /// @notice Update the verifying signer address.
+    /**
+     * @notice Cancel a pending exchange rate update.
+     * @dev    M-04: Allows the owner to abort a pending rate change (e.g. if the
+     *         owner key was briefly compromised and an attacker requested a
+     *         malicious rate change).
+     */
+    function cancelExchangeRateUpdate() external onlyOwner {
+        require(exchangeRateUnlockTime != 0, "PM: no pending update");
+        pendingExchangeRate = 0;
+        exchangeRateUnlockTime = 0;
+        emit ExchangeRateUpdateCancelled();
+    }
+
+    /**
+     * @notice Update the verifying signer address.
+     * @param _newSigner The new signer address (must not be zero or the owner).
+     */
     function setVerifyingSigner(address _newSigner) external onlyOwner {
         require(_newSigner != address(0), "PM: zero signer");
         require(_newSigner != owner(), "PM: signer must differ from owner");
         verifyingSigner = _newSigner;
     }
 
-    /// @notice Withdraw ERC-20 tokens from the paymaster balance.
+    /**
+     * @notice Withdraw ERC-20 tokens from the paymaster balance.
+     * @param to     Recipient address (must not be zero).
+     * @param amount Amount of tokens to withdraw.
+     */
     function withdrawToken(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "PM: zero address"); // L-03
         token.safeTransfer(to, amount);
     }
+
+    // ─── Staking (M-03) ─────────────────────────────────────────────────────
+    //
+    // NOTE: addStake(), unlockStake(), and withdrawStake() are inherited from
+    // BasePaymaster. ERC-4337 requires paymasters accessing associated storage
+    // (e.g., ERC-20 balances in _postOp) to maintain a stake with the EntryPoint.
+    // Without staking, strict bundlers (Pimlico, Alchemy, Stackup) will reject
+    // UserOps from this paymaster.
+    //
+    // Usage:
+    //   paymaster.addStake{value: 0.01 ether}(86400); // 1-day unlock delay
+    //   paymaster.unlockStake();
+    //   paymaster.withdrawStake(payable(recipient));
 }
