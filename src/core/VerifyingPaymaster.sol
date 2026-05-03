@@ -255,9 +255,13 @@ contract RootstockVerifyingPaymaster is BasePaymaster {
                 }
             }
         } else {
-            // Normal execution path (opSucceeded or opUnused).
-            // safeTransferFrom reverts on failure, which causes the EntryPoint
-            // to re-invoke postOp with mode=postOpReverted (handled above).
+            // Normal charging path. In ERC-4337 v0.7 the PostOpMode enum only
+            // has three values: opSucceeded, opReverted, postOpReverted.
+            // postOpReverted is handled in the branch above, so this `else`
+            // covers BOTH opSucceeded and opReverted — per the spec, a reverted
+            // user-op still owes gas. safeTransferFrom reverts on failure,
+            // which causes the EntryPoint to re-invoke _postOp with
+            // mode=postOpReverted (handled in the if-branch above).
             if (chargeAmount > 0) {
                 token.safeTransferFrom(sender, address(this), chargeAmount);
             }

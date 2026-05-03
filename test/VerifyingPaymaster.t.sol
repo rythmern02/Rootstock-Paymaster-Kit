@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.24;
 
 import "forge-std/Test.sol";
 import "../src/core/VerifyingPaymaster.sol";
 import "../src/mock/MockToken.sol";
+import "./helpers/PaymasterHarness.sol";
 import "@account-abstraction/contracts/interfaces/PackedUserOperation.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "@account-abstraction/contracts/core/Helpers.sol";
@@ -11,40 +12,28 @@ import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
-// Harness exposes internal functions for testing
-contract PaymasterHarness is RootstockVerifyingPaymaster {
-    constructor(
-        IEntryPoint _ep,
-        address _owner,
-        address _signer,
-        IERC20 _token
-    ) RootstockVerifyingPaymaster(_ep, _owner, _signer, _token) {}
-
-    function testValidate(
-        PackedUserOperation calldata op,
-        bytes32 hash,
-        uint256 preFund
-    ) external returns (bytes memory context, uint256 validationData) {
-        return _validatePaymasterUserOp(op, hash, preFund);
-    }
-}
-
 contract VerifyingPaymasterTest is Test {
     PaymasterHarness public paymaster;
     MockToken public token;
 
+    address public owner;
     address public signer;
     uint256 public signerKey;
     address public user;
     address public entryPointMock = address(0x999);
 
     function setUp() public {
+        // NEW-L-03: use a distinct owner EOA rather than address(this) so that
+        // permission-gated paths cannot pass simply because the test contract
+        // happens to be the owner.
+        owner = makeAddr("owner");
         (signer, signerKey) = makeAddrAndKey("signer");
         user = makeAddr("user");
 
         token = new MockToken();
 
-        // BasePaymaster constructor validates EntryPoint via supportsInterface. Mock it for address(0x999).
+        // BasePaymaster constructor validates EntryPoint via supportsInterface.
+        // Mock it for address(0x999).
         vm.mockCall(
             entryPointMock,
             abi.encodeWithSelector(
@@ -56,12 +45,13 @@ contract VerifyingPaymasterTest is Test {
 
         paymaster = new PaymasterHarness(
             IEntryPoint(entryPointMock),
-            address(this),
+            owner,
             signer,
             IERC20(address(token))
         );
 
-        // Setup user tokens
+        // Setup user tokens. MockToken.mint is owner-gated; this test contract
+        // deployed it, so it is the owner here.
         token.mint(user, 1000 * 10 ** 18);
         vm.prank(user);
         token.approve(address(paymaster), type(uint256).max);

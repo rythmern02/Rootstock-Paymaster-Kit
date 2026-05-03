@@ -45,7 +45,7 @@ When building on Rootstock, developers often encounter two models for gas abstra
 **Why use ERC-4337?**
 - **No changes to target contracts:** You don't need to inherit `ERC2771Context` or `IRelayRecipient` in your dApps.
 - **Smart Accounts:** It allows users to have programmable accounts (multisig, social recovery, session keys) rather than just EOAs.
-- **Ecosystem Compatibility:** Tooling (like `viem`, `permissionless.js`, `pimlico`) works across all EVM chains.
+- **Ecosystem Compatibility:** Tooling (like `viem` and bundler providers such as Pimlico, Alchemy, or Stackup) works across all EVM chains.
 
 This kit uses **ERC-4337** to completely future-proof your Rootstock dApps.
 
@@ -68,11 +68,12 @@ git clone https://github.com/your-username/rootstock-paymaster-kit.git
 cd rootstock-paymaster-kit
 npm install
 
-# Pin submodules to audited versions (required for reproducible builds)
+# Pin submodules to audited, signed-release versions (required for reproducible builds).
+# These exact tags are also pinned in .gitmodules (branch field) and foundry.lock.
 git submodule update --init --recursive
-cd lib/openzeppelin-contracts && git checkout v5.2.0 && cd ../..
-cd lib/forge-std            && git checkout v1.9.4  && cd ../..
-cd lib/account-abstraction  && git checkout v0.7.0  && cd ../..
+cd lib/openzeppelin-contracts && git checkout v5.1.0  && cd ../..
+cd lib/forge-std              && git checkout v1.15.0 && cd ../..
+cd lib/account-abstraction    && git checkout v0.7.0  && cd ../..
 ```
 
 ### 3. Environment Setup

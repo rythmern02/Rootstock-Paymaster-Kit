@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import "forge-std/Test.sol";
 import "../src/core/VerifyingPaymaster.sol";
 import "../src/mock/MockToken.sol";
+import "./helpers/PaymasterHarness.sol";
 import "@account-abstraction/contracts/interfaces/PackedUserOperation.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "@account-abstraction/contracts/interfaces/IPaymaster.sol";
@@ -11,38 +12,6 @@ import "@account-abstraction/contracts/core/Helpers.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-
-// ─── Harness ─────────────────────────────────────────────────────────────────
-
-/**
- * @dev Exposes internal functions so tests can call them directly without
- *      needing a full EntryPoint.
- */
-contract PaymasterHarness is RootstockVerifyingPaymaster {
-    constructor(
-        IEntryPoint _ep,
-        address _owner,
-        address _signer,
-        IERC20 _token
-    ) RootstockVerifyingPaymaster(_ep, _owner, _signer, _token) {}
-
-    function testValidate(
-        PackedUserOperation calldata op,
-        bytes32 hash,
-        uint256 preFund
-    ) external returns (bytes memory context, uint256 validationData) {
-        return _validatePaymasterUserOp(op, hash, preFund);
-    }
-
-    function testPostOp(
-        IPaymaster.PostOpMode mode,
-        bytes calldata context,
-        uint256 actualGasCost,
-        uint256 actualUserOpFeePerGas
-    ) external {
-        _postOp(mode, context, actualGasCost, actualUserOpFeePerGas);
-    }
-}
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -693,6 +662,74 @@ contract VerifyingPaymasterBugsTest is PaymasterTestBase {
             balBefore - balAfter,
             expectedCharge,
             "M07: opReverted must charge same as opSucceeded"
+        );
+    }
+
+    /**
+     * @notice NEW-I-01: The original review note asked for an explicit test of
+     *         `PostOpMode.opUnused`. That value does NOT exist in ERC-4337 v0.7
+     *         — the enum is exactly {opSucceeded, opReverted, postOpReverted}
+     *         (see lib/account-abstraction/contracts/interfaces/IPaymaster.sol).
+     *         The misleading "opUnused" mention in the prior contract comment
+     *         has been corrected. Below we instead pin the v0.7 invariant the
+     *         original note was reaching for: every non-`postOpReverted` mode
+     *         falls through the same charging branch and produces the same
+     *         token transfer for identical inputs. A future refactor that
+     *         splits the else-branch (e.g. refunds opReverted differently) will
+     *         fail this test loudly.
+     */
+    function test_NEW_I_01_PostOpAllModesChargeConsistently() public {
+        uint256 rate = paymaster.exchangeRate();
+        uint256 actualGasCost = 175_000;
+        uint256 maxTokenCost = 10_000 * 1e18;
+        bytes memory context = abi.encode(user, maxTokenCost, rate);
+        uint256 expectedCharge = (actualGasCost * rate) /
+            paymaster.PRICE_DENOMINATOR();
+        uint256 startBalance = token.balanceOf(user);
+
+        // opSucceeded — baseline charging path.
+        paymaster.testPostOp(
+            IPaymaster.PostOpMode.opSucceeded,
+            context,
+            actualGasCost,
+            1e9
+        );
+        uint256 succeededDelta = startBalance - token.balanceOf(user);
+        assertEq(
+            succeededDelta,
+            expectedCharge,
+            "NEW-I-01: opSucceeded must charge expected amount"
+        );
+
+        // opReverted — same charging path per ERC-4337: reverted ops still owe gas.
+        deal(address(token), user, startBalance);
+        paymaster.testPostOp(
+            IPaymaster.PostOpMode.opReverted,
+            context,
+            actualGasCost,
+            1e9
+        );
+        uint256 revertedDelta = startBalance - token.balanceOf(user);
+        assertEq(
+            revertedDelta,
+            succeededDelta,
+            "NEW-I-01: opReverted must charge identically to opSucceeded"
+        );
+
+        // postOpReverted — best-effort charge via try/catch; same amount when
+        // the user has tokens + allowance, but never reverts even when they don't.
+        deal(address(token), user, startBalance);
+        paymaster.testPostOp(
+            IPaymaster.PostOpMode.postOpReverted,
+            context,
+            actualGasCost,
+            1e9
+        );
+        uint256 postOpRevertedDelta = startBalance - token.balanceOf(user);
+        assertEq(
+            postOpRevertedDelta,
+            succeededDelta,
+            "NEW-I-01: postOpReverted must charge same amount when user has tokens"
         );
     }
 

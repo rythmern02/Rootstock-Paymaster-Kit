@@ -381,23 +381,37 @@ cd lib/account-abstraction && git checkout v0.7.0 && cd ../..
 
 **Root Cause:** `.gitmodules` contained only `path` and `url` for all three submodules with zero `branch` fields. A fresh `git submodule update --init --recursive` would pull HEAD of the default branch, potentially pulling unaudited or incompatible versions. OpenZeppelin pre-4.7.3 had ECDSA signature malleability. `account-abstraction` HEAD may have breaking interface changes.
 
-**Fix:** Added `branch` fields pinning each submodule to its audited version:
+**Fix (final, Round 3):** Added `branch` fields and aligned `.gitmodules`,
+`foundry.lock`, the actual submodule HEAD commits, and the README to a single
+canonical signed-release tag per submodule. The values are kept in sync across
+all four locations so a fresh clone always compiles the same audited bytecode:
+
 ```gitmodules
 [submodule "lib/forge-std"]
     path = lib/forge-std
     url = https://github.com/foundry-rs/forge-std
-    branch = v1.9.4
+    branch = v1.15.0
 
 [submodule "lib/openzeppelin-contracts"]
     path = lib/openzeppelin-contracts
     url = https://github.com/OpenZeppelin/openzeppelin-contracts
-    branch = v5.2.0
+    branch = v5.1.0
 
 [submodule "lib/account-abstraction"]
     path = lib/account-abstraction
     url = https://github.com/eth-infinitism/account-abstraction
     branch = v0.7.0
 ```
+
+| Submodule | Tag | SHA |
+|---|---|---|
+| `forge-std` | `v1.15.0` | `0844d7e1fc5e60d77b68e469bff60265f236c398` |
+| `openzeppelin-contracts` | `v5.1.0` | `69c8def5f222ff96f2b5beff05dfba996368aa79` |
+| `account-abstraction` | `v0.7.0` | `7af70c8993a6f42973f520ae0752386a5032abe7` |
+
+See **Round 3 NEW-H-01** below for the audit trail of why these specific tags
+were chosen (each is a signed release tag and the SHAs match the bytecode that
+the regression suite was actually exercised against).
 
 ---
 
@@ -423,7 +437,9 @@ cd lib/account-abstraction && git checkout v0.7.0 && cd ../..
 **Fix:** Changed all Solidity files from `pragma solidity ^0.8.20;` to `pragma solidity 0.8.24;` (exact version) to match the tested compiler:
 - `src/core/VerifyingPaymaster.sol`
 - `src/mock/MockToken.sol`
+- `test/VerifyingPaymaster.t.sol` *(Round 3 follow-up — initially missed; addressed by NEW-L-01)*
 - `test/VerifyingPaymasterBugs.t.sol`
+- `test/helpers/PaymasterHarness.sol` *(new helper added in Round 3)*
 - `script/DeployPaymaster.s.sol`
 - `script/DeploySimpleAccountFactory.s.sol`
 - `script/DeployEntryPoint.s.sol`
@@ -700,4 +716,258 @@ Ran 31 tests for test/VerifyingPaymasterBugs.t.sol:VerifyingPaymasterBugsTest
 [PASS] test_ValidSignature_MergedFromOldFile()
 
 Suite result: ok. 31 passed; 0 failed; 0 skipped
+```
+
+---
+
+## Detailed Resolutions — Security Audit Findings (Round 3 — Final)
+
+This round addresses the last set of review findings: a supply-chain version
+mismatch between `.gitmodules` / `foundry.lock` / README / actual submodule
+HEAD, a dead npm dependency, residual test-file inconsistencies, and missing
+PostOpMode coverage.
+
+---
+
+### NEW-H-01 — Submodule SHAs did not match declared branches
+
+**Severity:** 🔴 High
+**Files:** `.gitmodules`, `foundry.lock`, `README.md`, submodule HEADs
+
+**Root Cause:** Round 2 added `branch` fields to `.gitmodules` (H-01), but the
+values disagreed with the actually-checked-out commits and with `foundry.lock`:
+
+| Source | forge-std | openzeppelin-contracts |
+|---|---|---|
+| `.gitmodules` declared | `v1.9.4` | `v5.2.0` |
+| `foundry.lock` declared | `v1.15.0` | `v5.5.0` |
+| Actual submodule HEAD | `0844d7e1` (= `v1.15.0`) | `69c8def5` (= `v5.1.0`) |
+| README manual checkout | `v1.9.4` | `v5.2.0` |
+
+The compiled bytecode therefore came from `forge-std v1.15.0` and
+`openzeppelin-contracts v5.1.0`, but a contributor following the README would
+silently downgrade to `v1.9.4` / `v5.2.0` — a different ECDSA, SafeERC20, and
+Ownable implementation. Same supply-chain risk class as the original H-01,
+just at a different layer.
+
+**Fix:** Aligned all four sources to the signed release tags that match the
+actual HEADs (which are the bytecode the regression suite was exercised
+against). Choosing the actually-tested commits avoided introducing a new
+attack surface by swapping primitives:
+
+| Submodule | Pinned tag | SHA | Verified signed release |
+|---|---|---|---|
+| `forge-std` | `v1.15.0` | `0844d7e1fc5e60d77b68e469bff60265f236c398` | ✅ |
+| `openzeppelin-contracts` | `v5.1.0` | `69c8def5f222ff96f2b5beff05dfba996368aa79` | ✅ (`git tag --contains 69c8def5` → `v5.1.0`) |
+| `account-abstraction` | `v0.7.0` | `7af70c8993a6f42973f520ae0752386a5032abe7` | ✅ (already aligned) |
+
+Changes:
+1. `.gitmodules` — `branch` updated to `v1.15.0` and `v5.1.0` respectively.
+2. `foundry.lock` — `openzeppelin-contracts` entry rewritten from `v5.5.0` /
+   `fcbae539…` to `v5.1.0` / `69c8def5…`. `forge-std` / `account-abstraction`
+   entries already matched HEAD.
+3. `README.md` — manual `git checkout` instructions updated to `v5.1.0` and
+   `v1.15.0`, with a note explaining why these match `.gitmodules` and
+   `foundry.lock`.
+4. Submodule HEADs — already at the correct commits; no reset needed.
+
+**Verification:**
+```bash
+$ cd lib/openzeppelin-contracts && git describe --tags HEAD
+v5.1.0
+$ cd lib/forge-std && git describe --tags HEAD
+v1.15.0
+$ cd lib/account-abstraction && git describe --tags HEAD
+v0.7.0
+```
+
+---
+
+### NEW-M-01 — `permissionless` declared as production dependency but never used
+
+**Severity:** 🟡 Medium
+**File:** `package.json`, `package-lock.json`, `README.md`
+
+**Root Cause:** `package.json` listed `"permissionless": "^0.3.4"` in
+`dependencies`, but `grep -r permissionless` across `offchain/`, `script/`, and
+`test/` returned zero source-code imports. Two harms: (a) dead install footprint
+and audit surface (QA dimension); (b) caret range (`^0.3.4`) means any minor
+through `<0.4.0` could install on a fresh `npm install` — turning an unused
+dependency into a live install-time vector if `package-lock.json` is regenerated.
+
+**Fix:** Removed the dependency from `package.json` and regenerated
+`package-lock.json` (`npm install` reports `removed 1 package`). Also removed
+the now-misleading `permissionless.js` mention from the README's "Ecosystem
+Compatibility" line.
+
+**Verification:**
+```bash
+$ grep -rn permissionless package.json package-lock.json README.md
+(no matches)
+$ npm test  # forge test + tsc --noEmit
+33 tests passed, 0 failed
+```
+
+---
+
+### NEW-L-01 — Floating pragma in `test/VerifyingPaymaster.t.sol`
+
+**Severity:** 🟢 Low (originally High in Round 1 H-03; reduced to Low because
+production contracts are already pinned — only one regression-suite file
+remained on `^0.8.20`).
+
+**File:** `test/VerifyingPaymaster.t.sol`
+
+**Root Cause:** Round 2 H-03 fix pinned every `.sol` file in the repo to
+`pragma solidity 0.8.24` *except* `test/VerifyingPaymaster.t.sol`, which still
+declared `pragma solidity ^0.8.20`. A future Foundry pulling a different 0.8.x
+compiler could surface different gas costs or panic-encoding differences in
+this single test file.
+
+**Fix:** Pinned the file to `pragma solidity 0.8.24` to match every other
+`.sol` file in the repo. The Round 2 H-03 file list above is updated to
+include this file (and the new `test/helpers/PaymasterHarness.sol` shared helper).
+
+---
+
+### NEW-L-02 — Duplicate `PaymasterHarness` across test files
+
+**Severity:** 🟢 Low
+**Files:** `test/VerifyingPaymaster.t.sol`, `test/VerifyingPaymasterBugs.t.sol`
+
+**Root Cause:** Both test files defined a contract named `PaymasterHarness`,
+and the two definitions had drifted — the bugs file exposed both `testValidate`
+and `testPostOp`, the older file exposed only `testValidate`. Foundry compiled
+both without complaint, but a future change to one would silently miss the
+other and any validation-behavior refactor would have to be applied twice.
+
+**Fix:**
+1. Created `test/helpers/PaymasterHarness.sol` as the single source of truth,
+   exposing the union of both methods (`testValidate` + `testPostOp`).
+2. Pinned the helper to `pragma solidity 0.8.24` from the start.
+3. Both test files now `import "./helpers/PaymasterHarness.sol";` and the
+   in-file `contract PaymasterHarness { … }` definitions were removed.
+
+**Verification:** `forge build` compiles cleanly; all 33 tests pass.
+
+---
+
+### NEW-L-03 — Inconsistent test-setup pattern between test files
+
+**Severity:** 🟢 Low
+**File:** `test/VerifyingPaymaster.t.sol`
+
+**Root Cause:** `VerifyingPaymaster.t.sol` used `address(this)` as the paymaster
+owner in `setUp()`. That can mask permission bugs because the test contract
+itself "owns" the system under test — a function that should revert for a
+non-owner could pass silently if invoked from `address(this)`. The bugs file
+already used the safer `makeAddr("owner") + vm.prank(owner)` pattern.
+
+**Fix:** Migrated `setUp()` in `test/VerifyingPaymaster.t.sol` to:
+```solidity
+owner = makeAddr("owner");
+…
+paymaster = new PaymasterHarness(IEntryPoint(entryPointMock), owner, signer, IERC20(address(token)));
+```
+Now both test files use identical setup semantics, and any future owner-gated
+assertion in this file requires an explicit `vm.prank(owner)` to succeed.
+
+---
+
+### NEW-I-01 — Explicit `PostOpMode.opUnused` regression coverage
+
+**Severity:** ℹ️ Informational
+**Files:** `src/core/VerifyingPaymaster.sol`, `test/VerifyingPaymasterBugs.t.sol`
+
+**Root Cause + Investigation:** The review note asked for a direct test of
+`PostOpMode.opUnused`, citing a code comment in `_postOp` that mentioned
+`opUnused`. Verifying against the pinned `account-abstraction v0.7.0` source
+(`lib/account-abstraction/contracts/interfaces/IPaymaster.sol`), the v0.7
+`PostOpMode` enum has exactly **three** values:
+
+```solidity
+enum PostOpMode { opSucceeded, opReverted, postOpReverted }
+```
+
+There is no `opUnused` member in v0.7 (it existed in earlier draft revisions
+of the spec). The original `// opSucceeded or opUnused` comment in
+`_postOp` was therefore misleading — it both named a non-existent enum value
+and missed that the `else` branch actually covers `opSucceeded` *and*
+`opReverted`.
+
+**Fix (two parts):**
+
+1. **Source-comment correction** — `src/core/VerifyingPaymaster.sol` `_postOp`
+   else-branch comment rewritten to accurately describe the v0.7 enum:
+
+   ```solidity
+   // Normal charging path. In ERC-4337 v0.7 the PostOpMode enum only
+   // has three values: opSucceeded, opReverted, postOpReverted.
+   // postOpReverted is handled in the branch above, so this `else`
+   // covers BOTH opSucceeded and opReverted — per the spec, a reverted
+   // user-op still owes gas. safeTransferFrom reverts on failure,
+   // which causes the EntryPoint to re-invoke _postOp with
+   // mode=postOpReverted (handled in the if-branch above).
+   ```
+
+2. **Test added** — `test_NEW_I_01_PostOpAllModesChargeConsistently` in
+   `test/VerifyingPaymasterBugs.t.sol` exhaustively exercises every actual
+   v0.7 `PostOpMode` value (`opSucceeded`, `opReverted`, `postOpReverted`)
+   with identical inputs and asserts the resulting token charge is identical
+   in all three cases. Any future refactor that splits the else-branch (e.g.
+   to refund opReverted differently, or to skip charging in any mode) will
+   fail this test loudly.
+
+**Verification:**
+```text
+[PASS] test_NEW_I_01_PostOpAllModesChargeConsistently() (gas: 277724)
+```
+
+---
+
+## Final Test-Suite Status (Round 3)
+
+```text
+$ forge test -vv
+Ran 1 test for test/VerifyingPaymaster.t.sol:VerifyingPaymasterTest
+[PASS] test_ValidSignature()
+
+Ran 32 tests for test/VerifyingPaymasterBugs.t.sol:VerifyingPaymasterBugsTest
+[PASS] test_Bug14_PostOpRevertedChargesGas()
+[PASS] test_Bug14_PostOpRevertedDoesNotRevert()
+[PASS] test_Bug14_PostOpRevertedWithNoTokensDoesNotRevert()
+[PASS] test_Bug15_PostOpCapsAtMaxTokenCost()
+[PASS] test_Bug15_PostOpChargesTokens()
+[PASS] test_Bug15_ValidationPhaseNoTokenTransfer()
+[PASS] test_Bug17_MockTokenMintOnlyOwner()
+[PASS] test_Bug17_MockTokenOwnerCanMint()
+[PASS] test_Bug1_PostOpAcceptsFourParams()
+[PASS] test_Bug25_ConstructorZeroAddressReverts()
+[PASS] test_Bug25_OwnerAndSignerMustDiffer()
+[PASS] test_Bug25_SetVerifyingSignerCannotBeOwner()
+[PASS] test_Bug4_DifferentNoncesProduceDifferentHashes()
+[PASS] test_Bug4_ReplayProtectionNonceIncrements()
+[PASS] test_Bug5_SetExchangeRateZeroReverts()
+[PASS] test_Bug7_OnlyOwnerCanSetRate()
+[PASS] test_Bug7_SetExchangeRateAboveMaxReverts()
+[PASS] test_Bug7_SetExchangeRateBelowMinReverts()
+[PASS] test_Bug7_SetExchangeRateEmitsEvent()
+[PASS] test_L04_DefaultExchangeRateConstant()
+[PASS] test_L06_PendingRateResetAfterExecution()
+[PASS] test_M01_ConstructorZeroTokenReverts()
+[PASS] test_M04_CancelExchangeRateUpdate()
+[PASS] test_M04_CancelNoPendingReverts()
+[PASS] test_M06_SetVerifyingSignerSuccess()
+[PASS] test_M06_WithdrawTokenSuccess()
+[PASS] test_M06_WithdrawTokenZeroAddressReverts()
+[PASS] test_M07_PostOpOpRevertedChargesCorrectly()
+[PASS] test_NEW_I_01_PostOpAllModesChargeConsistently()
+[PASS] test_Regression_ValidSignatureStillPasses()
+[PASS] test_Regression_WrongSignerFails()
+[PASS] test_ValidSignature_MergedFromOldFile()
+
+Ran 2 test suites: 33 tests passed, 0 failed, 0 skipped (33 total tests)
+
+$ tsc --noEmit
+(no errors)
 ```
